@@ -38,6 +38,8 @@ pub const TokenType = enum {
     Null,
     Var,
     Print,
+    Or,
+    And,
 
     // Special
     Eof,

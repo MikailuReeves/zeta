@@ -5,8 +5,12 @@ const Lexer = @import("lexer.zig").Lexer;
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
 
-    const source = "//comment chat \n //another comment brev \n +";
-    var lexer = try Lexer.init(allocator, source);
+    const source_path = "source.txt";
+    const max_size = 10 * 1024 * 1024; // 10 mb
+
+    const source_buffer = try std.fs.cwd().readFileAlloc(allocator, source_path, max_size);
+
+    var lexer = try Lexer.init(allocator, source_buffer);
     defer lexer.deinit();
 
     const tokens = try lexer.scanTokens();
