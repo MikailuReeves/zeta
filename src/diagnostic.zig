@@ -3,6 +3,7 @@ const std = @import("std");
 // TODO: Fix formatting of printing
 // TODO: Add better error reporting for different types of errors.
 // TODO: Add errors to error array then print them all at the end.
+// TODO: Add filepath / link for the file where the error occured
 pub fn reportError(source: []const u8, line: usize, column: usize, message: []const u8) !void {
     var buf: [512]u8 = undefined;
     var writer_obj = std.fs.File.stderr().writer(&buf);

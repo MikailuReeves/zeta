@@ -1,5 +1,6 @@
 const std = @import("std");
 
+const diagnostic = @import("diagnostic.zig");
 const TokenType = @import("tokens.zig").TokenType;
 
 pub const Token = struct {
@@ -53,6 +54,12 @@ pub const Lexer = struct {
         return lexer;
     }
 
+    const LexerError = struct {
+        line: usize,
+        column: usize,
+        message: []const u8,
+    };
+
     pub fn deinit(self: *Lexer) void {
         self.line_start_indices.deinit(self.allocator);
         self.tokens.deinit(self.allocator);
@@ -102,14 +109,17 @@ pub const Lexer = struct {
 
     fn string(self: *Lexer) !void {
         while (self.peek() != '"' and !self.isAtEnd()) {
-            if (self.peek() == '\n') self.current_line += 1;
+            if (self.peek() == '\n') try self.handleNewline();
             _ = self.advance();
         }
 
         if (self.isAtEnd()) {
-            std.debug.print("Unexpected char at line {d}", .{
+            diagnostic.reportError(
+                self.source,
                 self.current_line,
-            });
+                self.getColumn(),
+                "Unclosed String",
+            ) catch {};
             return;
         }
 
@@ -119,6 +129,23 @@ pub const Lexer = struct {
         const value = self.source[self.start_char + 1 .. self.current_char - 1];
         std.debug.print("{s}\n", .{value});
         try self.addToken(.String, value);
+    }
+
+    // clamp
+    fn getColumn(self: *Lexer) usize {
+        if (self.current_line == 0) return 0;
+
+        const line_index = if (self.current_line - 1 < self.line_start_indices.items.len)
+            self.current_line - 1
+        else
+            self.line_start_indices.items.len - 1;
+
+        return self.current_char - self.line_start_indices.items[line_index];
+    }
+
+    fn handleNewline(self: *Lexer) !void {
+        self.current_line += 1;
+        try self.line_start_indices.append(self.allocator, self.current_char + 1);
     }
 
     fn isAlpha(c: u8) bool {
@@ -219,7 +246,12 @@ pub const Lexer = struct {
                 } else if (isAlpha(c)) {
                     try self.identifier();
                 } else {
-                    std.debug.print("Unexpected character at line {d}", .{self.current_line});
+                    diagnostic.reportError(
+                        self.source,
+                        self.current_line,
+                        self.getColumn(),
+                        try std.fmt.allocPrint(self.allocator, "unexpected character '{c}'", .{c}),
+                    ) catch {};
                 }
             },
         }
@@ -229,6 +261,12 @@ pub const Lexer = struct {
         while (!self.isAtEnd()) {
             try self.scanToken();
         }
+
+        // if file ends in newline ensure start index
+        if (self.line_start_indices.items.len < self.current_line) {
+            try self.line_start_indices.append(self.allocator, self.source.len);
+        }
+
         return self.tokens.items;
     }
 };
