@@ -11,6 +11,25 @@ pub const Token = struct {
     column: usize,
 };
 
+pub const LexErrorKind = enum {
+    UnexpectedChar,
+    InvalidNumber,
+    UnclosedString,
+    UnterminatedBlockComment,
+    InvalidEscapeSequence,
+    InvalidUtf8,
+};
+
+pub const LexError = struct {
+    kind: LexErrorKind,
+    line: usize,
+    column: usize,
+    start: usize,
+    end: usize,
+    lexeme: []const u8,
+    offending: ?u8 = null, // for UnexpectedChar
+};
+
 pub const Lexer = struct {
     allocator: std.mem.Allocator,
     current_line: usize,
@@ -19,6 +38,7 @@ pub const Lexer = struct {
     source: []const u8,
     line_start_indices: std.ArrayList(usize),
     tokens: std.ArrayList(Token),
+    errors: std.ArrayList(LexError),
     keyword_map: std.StringHashMap(TokenType),
 
     pub fn init(allocator: std.mem.Allocator, source: []const u8) !Lexer {
@@ -48,6 +68,7 @@ pub const Lexer = struct {
             .keyword_map = map,
             .line_start_indices = try std.ArrayList(usize).initCapacity(allocator, 16),
             .tokens = try std.ArrayList(Token).initCapacity(allocator, 32),
+            .errors = try std.ArrayList(LexError).initCapacity(allocator, 4),
         };
 
         try lexer.line_start_indices.append(allocator, 0);
@@ -63,6 +84,22 @@ pub const Lexer = struct {
     pub fn deinit(self: *Lexer) void {
         self.line_start_indices.deinit(self.allocator);
         self.tokens.deinit(self.allocator);
+        self.errors.deinit(self.allocator);
+    }
+
+    fn addError(self: *Lexer, kind: LexErrorKind, offending: ?u8) !void {
+        const start = self.start_char;
+        const end = self.current_char;
+
+        try self.errors.append(self.allocator, .{
+            .kind = kind,
+            .line = self.current_line,
+            .column = self.getColumn(),
+            .start = start,
+            .end = end,
+            .lexeme = self.source[start..end],
+            .offending = offending,
+        });
     }
 
     fn isAtEnd(self: *const Lexer) bool {
@@ -98,7 +135,6 @@ pub const Lexer = struct {
         });
     }
 
-    // Match the current character if it equals the expected character
     fn match(self: *Lexer, expected: u8) bool {
         if (self.isAtEnd()) return false;
         if (self.source[self.current_char] != expected) return false;
@@ -107,51 +143,24 @@ pub const Lexer = struct {
         return true;
     }
 
-    fn string(self: *Lexer) !void {
-        while (self.peek() != '"' and !self.isAtEnd()) {
-            if (self.peek() == '\n') try self.handleNewline();
-            _ = self.advance();
-        }
-
-        if (self.isAtEnd()) {
-            diagnostic.reportError(
-                self.source,
-                self.current_line,
-                self.getColumn(),
-                "Unclosed String",
-            ) catch {};
-            return;
-        }
-
-        _ = self.advance(); // closing "
-
-        // remove the surrounding ""
-        const value = self.source[self.start_char + 1 .. self.current_char - 1];
-        std.debug.print("{s}\n", .{value});
-        try self.addToken(.String, value);
-    }
-
-    // clamp
     fn getColumn(self: *Lexer) usize {
-        if (self.current_line == 0) return 0;
-
-        const line_index = if (self.current_line - 1 < self.line_start_indices.items.len)
-            self.current_line - 1
-        else
-            self.line_start_indices.items.len - 1;
-
-        return self.current_char - self.line_start_indices.items[line_index];
+        const line_start = self.line_start_indices.items[self.current_line - 1];
+        return self.current_char - line_start;
     }
 
     fn handleNewline(self: *Lexer) !void {
         self.current_line += 1;
-        try self.line_start_indices.append(self.allocator, self.current_char + 1);
+        try self.line_start_indices.append(self.allocator, self.current_char);
     }
 
     fn isAlpha(c: u8) bool {
         return (c >= 'a' and c <= 'z') or
             (c >= 'A' and c <= 'Z') or
             c == '_';
+    }
+
+    fn isHexDigit(c: u8) bool {
+        return (c >= '0' and c <= '9') or (c >= 'a' and c <= 'f') or (c >= 'A' and c <= 'F');
     }
 
     fn isDigit(c: u8) bool {
@@ -171,23 +180,65 @@ pub const Lexer = struct {
         try self.addToken(token_type, null);
     }
 
+    // TODO: handle bad floats 123.
+    // TODO: bad exponent 1e
+    // TODO: hexadecimal
     fn number(self: *Lexer) !void {
         while (isDigit(self.peek())) _ = self.advance();
 
-        // fractional part
         if (self.peek() == '.' and isDigit(self.peekNext())) {
-            _ = self.advance(); // consume '.'
+            _ = self.advance();
             while (isDigit(self.peek())) _ = self.advance();
         }
 
-        // invalid number
         if (isAlpha(self.peek())) {
-            std.debug.print("Error at line {d}: invalid numeric literal \n", .{self.current_line});
+            // Consume the rest of the invalid tail
             while (isAlpha(self.peek()) or isDigit(self.peek())) _ = self.advance();
+
+            try self.addError(.InvalidNumber, null);
             return;
         }
 
         try self.addToken(.Number, self.source[self.start_char..self.current_char]);
+    }
+
+    fn string(self: *Lexer) !void {
+        const string_start_char = self.start_char;
+        const string_start_line = self.current_line;
+        const string_start_column = self.getColumn();
+
+        // consume content until we find a closing quote or EOF
+        while (!self.isAtEnd()) {
+            const c = self.peek();
+            if (c == '"') break;
+
+            if (c == '\n') {
+                _ = self.advance();
+                try self.handleNewline();
+            } else {
+                _ = self.advance();
+            }
+        }
+
+        // report error at start of string
+        if (self.isAtEnd()) {
+            try self.errors.append(self.allocator, .{
+                .kind = .UnclosedString,
+                .line = string_start_line,
+                .column = string_start_column,
+                .start = string_start_char,
+                .end = self.current_char,
+                .lexeme = self.source[string_start_char..self.current_char],
+                .offending = null,
+            });
+            return;
+        }
+
+        _ = self.advance(); // closing quote
+
+        // slice inner value without quotes
+        const value = self.source[string_start_char + 1 .. self.current_char - 1];
+        try self.addToken(.String, value);
     }
 
     // Scan the next token from the input
@@ -202,19 +253,31 @@ pub const Lexer = struct {
                     while (self.peek() != '\n' and !self.isAtEnd()) _ = self.advance();
                     return;
                 } else if (next_char == '*') {
-                    _ = self.advance();
+                    const comment_start_char = self.start_char; // start of "/*"
+                    const comment_start_line = self.current_line;
+                    const comment_start_column = self.getColumn();
+
+                    _ = self.advance(); // consume '*'
+
                     while (true) {
                         if (self.peek() == '*' and self.current_char + 1 < self.source.len and self.source[self.current_char + 1] == '/') {
-                            _ = self.advance(); // Consume '*'
-                            _ = self.advance(); // Consume '/'
+                            _ = self.advance(); // '*'
+                            _ = self.advance(); // '/'
                             break;
                         } else if (self.isAtEnd()) {
-                            break;
+                            // Use the *comment start* for error coordinates
+                            try self.errors.append(self.allocator, .{
+                                .kind = .UnterminatedBlockComment,
+                                .line = comment_start_line,
+                                .column = comment_start_column,
+                                .start = comment_start_char,
+                                .end = self.current_char,
+                                .lexeme = self.source[comment_start_char..self.current_char],
+                                .offending = null,
+                            });
+                            return;
                         } else {
-                            if (self.advance() == '\n') {
-                                self.current_line += 1;
-                                try self.line_start_indices.append(self.allocator, self.current_char);
-                            }
+                            if (self.advance() == '\n') try self.handleNewline();
                         }
                     }
                     return;
@@ -236,22 +299,15 @@ pub const Lexer = struct {
             '>' => if (self.match('=')) try self.addToken(.GreaterEqual, null) else try self.addToken(.Greater, null),
             '"' => try self.string(),
             ' ', '\r', '\t' => {}, // Ignore whitespace
-            '\n' => {
-                self.current_line += 1;
-                try self.line_start_indices.append(self.allocator, self.current_char);
-            },
+            '\n' => try self.handleNewline(),
             else => {
                 if (isDigit(c)) {
                     try self.number();
                 } else if (isAlpha(c)) {
                     try self.identifier();
                 } else {
-                    diagnostic.reportError(
-                        self.source,
-                        self.current_line,
-                        self.getColumn(),
-                        try std.fmt.allocPrint(self.allocator, "unexpected character '{c}'", .{c}),
-                    ) catch {};
+                    try self.addError(.UnexpectedChar, c);
+                    // you might want to just return here; or advance to try to resync
                 }
             },
         }
@@ -260,11 +316,6 @@ pub const Lexer = struct {
     pub fn scanTokens(self: *Lexer) ![]Token {
         while (!self.isAtEnd()) {
             try self.scanToken();
-        }
-
-        // if file ends in newline ensure start index
-        if (self.line_start_indices.items.len < self.current_line) {
-            try self.line_start_indices.append(self.allocator, self.source.len);
         }
 
         return self.tokens.items;

@@ -1,6 +1,7 @@
 const std = @import("std");
 
 const Lexer = @import("lexer.zig").Lexer;
+const Diagnostic = @import("diagnostic.zig").Diagnostic;
 
 pub fn main() !void {
     const allocator = std.heap.page_allocator;
@@ -14,6 +15,14 @@ pub fn main() !void {
     defer lexer.deinit();
 
     const tokens = try lexer.scanTokens();
+
+    //std.debug.print("Errors: {d}\n", .{lexer.errors.items.len});
+
+    var diag = Diagnostic.init(allocator, source_path, source_buffer);
+
+    for (lexer.errors.items) |err| {
+        try diag.report(err);
+    }
 
     for (tokens) |token| {
         std.debug.print("Token: {s} | Lexeme: \"{s}\" | Line: {d} | Column: {d}\n", .{ @tagName(token.kind), token.lexeme, token.line, token.column });
