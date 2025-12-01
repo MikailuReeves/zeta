@@ -85,6 +85,7 @@ pub const Lexer = struct {
         self.line_start_indices.deinit(self.allocator);
         self.tokens.deinit(self.allocator);
         self.errors.deinit(self.allocator);
+        self.keyword_map.deinit();
     }
 
     fn addError(self: *Lexer, kind: LexErrorKind, offending: ?u8) !void {
@@ -184,14 +185,41 @@ pub const Lexer = struct {
     // TODO: bad exponent 1e
     // TODO: hexadecimal
     fn number(self: *Lexer) !void {
-        while (isDigit(self.peek())) _ = self.advance();
-
-        if (self.peek() == '.' and isDigit(self.peekNext())) {
+        var seen_digit = false;
+        while (isDigit(self.peek()) or self.peek() == '_') {
+            const c = self.peek();
+            if (c == '_') {
+                // disallow leading or consecutive underscores
+                if (!seen_digit or self.peekNext() == '_' or !isDigit(self.peekNext())) {
+                    _ = self.advance();
+                    try self.addError(.InvalidNumber, null);
+                    return;
+                }
+            } else {
+                seen_digit = true;
+            }
             _ = self.advance();
-            while (isDigit(self.peek())) _ = self.advance();
         }
 
-        if (isAlpha(self.peek())) {
+        // validate numbers
+        if (self.peek() == '.') {
+            if (isDigit(self.peekNext())) {
+                _ = self.advance();
+                while (isDigit(self.peek()) or self.peek() == '_') {
+                    if (self.peek() == '_') {
+                        _ = self.advance();
+                        continue;
+                    }
+                    _ = self.advance();
+                }
+            } else {
+                _ = self.advance();
+                try self.addError(.InvalidNumber, null);
+                return;
+            }
+        }
+
+        if (isAlpha(self.peek()) and self.peek() != 'x') {
             // Consume the rest of the invalid tail
             while (isAlpha(self.peek()) or isDigit(self.peek())) _ = self.advance();
 
@@ -246,7 +274,15 @@ pub const Lexer = struct {
         self.start_char = self.current_char;
         const c = self.advance() orelse return;
         switch (c) {
-            '*' => try self.addToken(.Star, null),
+            '*' => {
+                const next_char = self.peek();
+                if (next_char == '*') {
+                    _ = self.advance(); // consume second '*'
+                    try self.addToken(.Power, null);
+                } else {
+                    try self.addToken(.Star, null);
+                }
+            },
             '/' => { // for "//" comments
                 const next_char = self.peek();
                 if (next_char == '/') {
@@ -292,14 +328,36 @@ pub const Lexer = struct {
             ')' => try self.addToken(.RParen, null),
             ',' => try self.addToken(.Comma, null),
             ';' => try self.addToken(.Semicolon, null),
-            '.' => try self.addToken(.Dot, null),
+            '.' => {
+                if (isDigit(self.peek())) {
+                    while (isDigit(self.peek())) {
+                        _ = self.advance();
+                    }
+                    try self.addToken(.Number, self.source[self.start_char..self.current_char]);
+                } else {
+                    try self.addToken(.Dot, null);
+                }
+            },
             '!' => if (self.match('=')) try self.addToken(.NotEqual, null) else try self.addToken(.Bang, null),
-            '=' => if (self.match('=')) try self.addToken(.Equal, null) else try self.addToken(.Equal, null),
+            '=' => if (self.match('=')) try self.addToken(.EqualEqual, null) else try self.addToken(.Equal, null),
             '<' => if (self.match('=')) try self.addToken(.LessEqual, null) else try self.addToken(.Less, null),
             '>' => if (self.match('=')) try self.addToken(.GreaterEqual, null) else try self.addToken(.Greater, null),
             '"' => try self.string(),
             ' ', '\r', '\t' => {}, // Ignore whitespace
             '\n' => try self.handleNewline(),
+
+            // TODO this is a terrible solution maybe fix this
+            // '0' => {
+            //     if (self.peek() == 'x') {
+            //         _ = self.advance();
+
+            //         while (isHexDigit(self.peek())) {
+            //             _ = self.advance();
+            //         }
+            //         try self.addToken(.Number, self.source[self.start_char..self.current_char]);
+            //         return;
+            //     }
+            // },
             else => {
                 if (isDigit(c)) {
                     try self.number();
@@ -307,7 +365,6 @@ pub const Lexer = struct {
                     try self.identifier();
                 } else {
                     try self.addError(.UnexpectedChar, c);
-                    // you might want to just return here; or advance to try to resync
                 }
             },
         }
@@ -317,6 +374,8 @@ pub const Lexer = struct {
         while (!self.isAtEnd()) {
             try self.scanToken();
         }
+        self.start_char = self.current_char;
+        try self.addToken(.Eof, null);
 
         return self.tokens.items;
     }

@@ -5,6 +5,7 @@ pub const TokenType = enum {
     Plus,
     Minus,
     Bang,
+    Power,
 
     // Comparison
     Greater,
@@ -12,6 +13,7 @@ pub const TokenType = enum {
     Less,
     LessEqual,
     Equal,
+    EqualEqual,
     NotEqual,
 
     // Delimiters
