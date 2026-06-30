@@ -1,0 +1,11 @@
+n = 1
+while n>100 {
+    hex = 0x1000
+    1**n
+    n += 1
+    123asd
+    dotnum = .123
+    badfloat = 123.
+    undernumber = 100_000
+    invalidundernum = 100__100
+}

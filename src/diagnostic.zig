@@ -24,13 +24,6 @@ pub const Diagnostic = struct {
     }
 
     pub fn report(self: *Diagnostic, err: anytype) !void {
-        var err_buf: [256]u8 = undefined;
-        var err_writer_buf = std.fs.File.stderr().writer(&err_buf);
-        const stderr = &err_writer_buf.interface;
-
-        const abs = try std.fs.cwd().realpathAlloc(self.allocator, self.source_path);
-        defer self.allocator.free(abs);
-
         const label = try std.fmt.allocPrint(
             self.allocator,
             "{s}:{d}:{d}",
@@ -38,16 +31,9 @@ pub const Diagnostic = struct {
         );
         defer self.allocator.free(label);
 
-        const link = try std.fmt.allocPrint(
-            self.allocator,
-            "\x1b]8;;file:///{s}\x1b\\{s}\x1b]8;;\x1b\\",
-            .{ abs, label },
-        );
-        defer self.allocator.free(link);
-
         // Header
-        try stderr.print("\x1b[31mError:\x1b[0m {s}\n", .{@tagName(err.kind)});
-        try stderr.print("    at {s}\n\n", .{link});
+        std.debug.print("\x1b[31mError:\x1b[0m {s}\n", .{@tagName(err.kind)});
+        std.debug.print("    at {s}\n\n", .{label});
 
         // Context
         const start_line = if (err.line > 1) err.line - 1 else err.line;
@@ -58,21 +44,18 @@ pub const Diagnostic = struct {
 
         while (it.next()) |chunk| {
             if (current >= start_line and current <= end_line) {
-                try stderr.print(" {d: >4} | {s}\n", .{ current, chunk });
-
+                std.debug.print(" {d: >4} | {s}\n", .{ current, chunk });
                 if (current == err.line) {
-                    try stderr.print("      | ", .{});
+                    std.debug.print("      | ", .{});
                     var i: usize = 0;
                     while (i < err.column - 1) : (i += 1) {
-                        try stderr.writeByte(' ');
+                        std.debug.print(" ", .{});
                     }
-                    try stderr.print("\x1b[31m^\x1b[0m\n", .{});
+                    std.debug.print("\x1b[31m^\x1b[0m\n", .{});
                 }
             }
             current += 1;
         }
-
-        try stderr.print("\n", .{});
-        try stderr.flush();
+        std.debug.print("\n", .{});
     }
 };
