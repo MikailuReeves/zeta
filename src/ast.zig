@@ -36,13 +36,54 @@ fn expectBool(val: Value) !bool {
     return val.Bool;
 }
 
+fn opStr(op: TokenType) []const u8 {
+    return switch (op) {
+        .Plus => "+",
+        .Minus => "-",
+        .Star => "*",
+        .Slash => "/",
+        .Power => "**",
+        .Bang => "!",
+        .Greater => ">",
+        .GreaterEqual => ">=",
+        .Less => "<",
+        .LessEqual => "<=",
+        .EqualEqual => "==",
+        .NotEqual => "!=",
+        else => "?",
+    };
+}
+
+fn ppValue(allocator: std.mem.Allocator, val: Value) ![]const u8 {
+    return switch (val) {
+        .Number => |n| try std.fmt.allocPrint(allocator, "{d}", .{n}),
+        .Bool => |b| try std.fmt.allocPrint(allocator, "{}", .{b}),
+        .String => |s| try std.fmt.allocPrint(allocator, "\"{s}\"", .{s}),
+        .Null => try std.fmt.allocPrint(allocator, "null", .{}),
+    };
+}
+
 // TODO: When parser is created it will own a ArenaAllocator to manage the pointers
-// TODO: Pretty printing the AST
-// TODO: Move to eval later
+// TODO: Move eval to eval.zig later
 pub const Node = struct {
     expr: Expr,
     line: usize,
     column: usize,
+
+    pub fn prettyPrint(self: Node, allocator: std.mem.Allocator) ![]const u8 {
+        switch (self.expr) {
+            .literal => |value| return ppValue(allocator, value),
+            .unary => |u| {
+                const operand_str = try u.operand.prettyPrint(allocator);
+                return std.fmt.allocPrint(allocator, "({s} {s})", .{ opStr(u.operator), operand_str });
+            },
+            .binary => |b| {
+                const left_str = try b.left.prettyPrint(allocator);
+                const right_str = try b.right.prettyPrint(allocator);
+                return std.fmt.allocPrint(allocator, "({s} {s} {s})", .{ opStr(b.operator), left_str, right_str });
+            },
+        }
+    }
 
     pub fn evalExp(self: Node) !Value {
         switch (self.expr) {
