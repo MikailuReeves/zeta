@@ -5,6 +5,7 @@ const Node = zeta.Ast.Node;
 const Expr = zeta.Ast.Expr;
 const Value = zeta.Ast.Value;
 const TokenType = zeta.Tokens;
+const eval = zeta.Eval;
 
 fn createNode(allocator: std.mem.Allocator, expr: Expr, line: usize, column: usize) !*const Node {
     const ptr = try allocator.create(Node);
@@ -24,19 +25,19 @@ fn boolNode(allocator: std.mem.Allocator, b: bool) !*const Node {
 
 test "literal number evaluates to itself" {
     const node = Node{ .expr = .{ .literal = .{ .Number = 42.0 } }, .line = 1, .column = 1 };
-    const result = try node.evalExp();
+    const result = try eval.evalExp(node);
     try std.testing.expectEqual(Value{ .Number = 42.0 }, result);
 }
 
 test "literal bool evaluates to itself" {
     const node = Node{ .expr = .{ .literal = .{ .Bool = true } }, .line = 1, .column = 1 };
-    const result = try node.evalExp();
+    const result = try eval.evalExp(node);
     try std.testing.expectEqual(Value{ .Bool = true }, result);
 }
 
 test "literal null evaluates to itself" {
     const node = Node{ .expr = .{ .literal = .{ .Null = {} } }, .line = 1, .column = 1 };
-    const result = try node.evalExp();
+    const result = try eval.evalExp(node);
     try std.testing.expectEqual(Value{ .Null = {} }, result);
 }
 
@@ -48,7 +49,7 @@ test "negate a number: -(5)" {
     defer allocator.destroy(five);
 
     const node = Node{ .expr = .{ .unary = .{ .operator = .Minus, .operand = five } }, .line = 1, .column = 1 };
-    const result = try node.evalExp();
+    const result = try eval.evalExp(node);
     try std.testing.expectEqual(Value{ .Number = -5.0 }, result);
 }
 
@@ -58,7 +59,7 @@ test "negate a bool is a type error" {
     defer allocator.destroy(t);
 
     const node = Node{ .expr = .{ .unary = .{ .operator = .Minus, .operand = t } }, .line = 1, .column = 1 };
-    try std.testing.expectError(error.TypeError, node.evalExp());
+    try std.testing.expectError(error.TypeError, eval.evalExp(node));
 }
 
 test "logical not: !true = false" {
@@ -67,7 +68,7 @@ test "logical not: !true = false" {
     defer allocator.destroy(t);
 
     const node = Node{ .expr = .{ .unary = .{ .operator = .Bang, .operand = t } }, .line = 1, .column = 1 };
-    const result = try node.evalExp();
+    const result = try eval.evalExp(node);
     try std.testing.expectEqual(Value{ .Bool = false }, result);
 }
 
@@ -77,7 +78,7 @@ test "logical not on number is a type error" {
     defer allocator.destroy(n);
 
     const node = Node{ .expr = .{ .unary = .{ .operator = .Bang, .operand = n } }, .line = 1, .column = 1 };
-    try std.testing.expectError(error.TypeError, node.evalExp());
+    try std.testing.expectError(error.TypeError, eval.evalExp(node));
 }
 
 // --- Binary arithmetic tests ---
@@ -90,7 +91,7 @@ test "binary add: 1 + 2 = 3" {
     defer allocator.destroy(two);
 
     const node = Node{ .expr = .{ .binary = .{ .left = one, .operator = .Plus, .right = two } }, .line = 1, .column = 1 };
-    const result = try node.evalExp();
+    const result = try eval.evalExp(node);
     try std.testing.expectEqual(Value{ .Number = 3.0 }, result);
 }
 
@@ -102,7 +103,7 @@ test "binary subtract: 5 - 3 = 2" {
     defer allocator.destroy(three);
 
     const node = Node{ .expr = .{ .binary = .{ .left = five, .operator = .Minus, .right = three } }, .line = 1, .column = 1 };
-    const result = try node.evalExp();
+    const result = try eval.evalExp(node);
     try std.testing.expectEqual(Value{ .Number = 2.0 }, result);
 }
 
@@ -114,7 +115,7 @@ test "binary multiply: 3 * 4 = 12" {
     defer allocator.destroy(four);
 
     const node = Node{ .expr = .{ .binary = .{ .left = three, .operator = .Star, .right = four } }, .line = 1, .column = 1 };
-    const result = try node.evalExp();
+    const result = try eval.evalExp(node);
     try std.testing.expectEqual(Value{ .Number = 12.0 }, result);
 }
 
@@ -126,7 +127,7 @@ test "multiply by zero short circuits" {
     defer allocator.destroy(zero);
 
     const node = Node{ .expr = .{ .binary = .{ .left = five, .operator = .Star, .right = zero } }, .line = 1, .column = 1 };
-    const result = try node.evalExp();
+    const result = try eval.evalExp(node);
     try std.testing.expectEqual(Value{ .Number = 0.0 }, result);
 }
 
@@ -138,7 +139,7 @@ test "valid division: 10 / 2 = 5" {
     defer allocator.destroy(two);
 
     const node = Node{ .expr = .{ .binary = .{ .left = ten, .operator = .Slash, .right = two } }, .line = 1, .column = 1 };
-    const result = try node.evalExp();
+    const result = try eval.evalExp(node);
     try std.testing.expectEqual(Value{ .Number = 5.0 }, result);
 }
 
@@ -150,7 +151,7 @@ test "division by one short circuits" {
     defer allocator.destroy(one);
 
     const node = Node{ .expr = .{ .binary = .{ .left = seven, .operator = .Slash, .right = one } }, .line = 1, .column = 1 };
-    const result = try node.evalExp();
+    const result = try eval.evalExp(node);
     try std.testing.expectEqual(Value{ .Number = 7.0 }, result);
 }
 
@@ -162,7 +163,7 @@ test "division by zero returns error" {
     defer allocator.destroy(zero);
 
     const node = Node{ .expr = .{ .binary = .{ .left = ten, .operator = .Slash, .right = zero } }, .line = 1, .column = 1 };
-    try std.testing.expectError(error.DivisionByZero, node.evalExp());
+    try std.testing.expectError(error.DivisionByZero, eval.evalExp(node));
 }
 
 test "power: 2 ** 3 = 8" {
@@ -173,7 +174,7 @@ test "power: 2 ** 3 = 8" {
     defer allocator.destroy(three);
 
     const node = Node{ .expr = .{ .binary = .{ .left = two, .operator = .Power, .right = three } }, .line = 1, .column = 1 };
-    const result = try node.evalExp();
+    const result = try eval.evalExp(node);
     try std.testing.expectEqual(Value{ .Number = 8.0 }, result);
 }
 
@@ -185,7 +186,7 @@ test "power zero short circuits: 5 ** 0 = 1" {
     defer allocator.destroy(zero);
 
     const node = Node{ .expr = .{ .binary = .{ .left = five, .operator = .Power, .right = zero } }, .line = 1, .column = 1 };
-    const result = try node.evalExp();
+    const result = try eval.evalExp(node);
     try std.testing.expectEqual(Value{ .Number = 1.0 }, result);
 }
 
@@ -199,7 +200,7 @@ test "adding bool and number is a type error" {
     defer allocator.destroy(n);
 
     const node = Node{ .expr = .{ .binary = .{ .left = t, .operator = .Plus, .right = n } }, .line = 1, .column = 1 };
-    try std.testing.expectError(error.TypeError, node.evalExp());
+    try std.testing.expectError(error.TypeError, eval.evalExp(node));
 }
 
 // --- Nested expression tests ---
@@ -215,7 +216,7 @@ test "nested: -(1 + 2) = -3" {
     defer allocator.destroy(add);
 
     const node = Node{ .expr = .{ .unary = .{ .operator = .Minus, .operand = add } }, .line = 1, .column = 1 };
-    const result = try node.evalExp();
+    const result = try eval.evalExp(node);
     try std.testing.expectEqual(Value{ .Number = -3.0 }, result);
 }
 
@@ -236,6 +237,6 @@ test "deeper nesting: (1 + 2) * (4 - 1) = 9" {
     defer allocator.destroy(right);
 
     const node = Node{ .expr = .{ .binary = .{ .left = left, .operator = .Star, .right = right } }, .line = 1, .column = 1 };
-    const result = try node.evalExp();
+    const result = try eval.evalExp(node);
     try std.testing.expectEqual(Value{ .Number = 9.0 }, result);
 }
