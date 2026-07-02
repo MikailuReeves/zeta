@@ -60,5 +60,4 @@ pub const Node = struct {
             },
         }
     }
-
 };
