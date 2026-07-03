@@ -4,13 +4,7 @@ const Node = Ast.Node;
 const Value = Ast.Value;
 const TokenType = @import("tokens.zig").TokenType;
 
-pub const EvalError = error{
-    DivisionByZero,
-    UnsupportedOperator,
-    TypeError,
-    InvalidOperand,
-    Par
-};
+pub const EvalError = error{ DivisionByZero, UnsupportedOperator, TypeError, InvalidOperand, Par };
 
 fn expectNumbers(left: Value, right: Value) !struct { f64, f64 } {
     if (left != .Number or right != .Number) return error.TypeError;
@@ -84,34 +78,14 @@ pub fn evalExp(node: Node) EvalError!Value {
                     return Value{ .Number = (left_num / right_num) };
                 },
 
-                .Greater => {
-                    const left_num, const right_num = try expectNumbers(operand_left, operand_right);
-                    return Value{ .Bool = left_num > right_num };
-                },
-
-                .GreaterEqual => {
-                    const left_num, const right_num = try expectNumbers(operand_left, operand_right);
-                    return Value{ .Bool = left_num >= right_num };
-                },
-
                 .Less => {
                     const left_num, const right_num = try expectNumbers(operand_left, operand_right);
                     return Value{ .Bool = left_num < right_num };
                 },
 
-                .LessEqual => {
-                    const left_num, const right_num = try expectNumbers(operand_left, operand_right);
-                    return Value{ .Bool = left_num <= right_num };
-                },
-
                 .EqualEqual => {
                     if (std.meta.activeTag(operand_left) != std.meta.activeTag(operand_right)) return error.TypeError;
                     return Value{ .Bool = std.meta.eql(operand_left, operand_right) };
-                },
-
-                .NotEqual => {
-                    if (std.meta.activeTag(operand_left) != std.meta.activeTag(operand_right)) return error.TypeError;
-                    return Value{ .Bool = !std.meta.eql(operand_left, operand_right) };
                 },
 
                 else => return error.UnsupportedOperator,

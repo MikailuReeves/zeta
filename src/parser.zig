@@ -78,13 +78,28 @@ pub const Parser = struct {
             const right_ptr = try self.allocator.create(Node);
             right_ptr.* = try self.comparison();
 
-            left_expr = Node{
-                .column = operator.column,
-                .line = operator.line,
-                .expr = .{.binary = .{ .left = left_ptr, .operator = operator.kind, .right = right_ptr }},
-            };
-        }
+            if (operator.kind == TokenType.EqualEqual) {
+                left_expr = Node{
+                    .column = operator.column,
+                    .line = operator.line,
+                    .expr = .{.binary = .{ .left = left_ptr, .operator = operator.kind, .right = right_ptr }},
+                };
+            } else {
+                const left_expr_ptr = try self.allocator.create(Node);
+                left_expr = Node{
+                    .column = operator.column,
+                    .line = operator.line,
+                    .expr = .{.binary = .{ .left = left_ptr, .operator = .EqualEqual, .right = right_ptr }},
+                };
+                left_expr_ptr.* = left_expr;
 
+                left_expr = Node {
+                  .column = operator.column,
+                  .line = operator.line,
+                  .expr = .{ .unary = .{ .operator = .Bang, .operand = left_expr_ptr} }
+                };
+            }
+        }
         return left_expr;
     }
 
@@ -99,13 +114,52 @@ pub const Parser = struct {
             const right_ptr = try self.allocator.create(Node);
             right_ptr.* = try self.term();
 
-            left_expr = Node{
-                .column = operator.column,
-                .line = operator.line,
-                .expr = .{.binary = .{ .left = left_ptr, .operator = operator.kind, .right = right_ptr }},
-            };
-        }
+            switch (operator.kind) {
+                .Greater => {
+                    left_expr = Node{
+                        .column = operator.column,
+                        .line = operator.line,
+                        .expr = .{.binary = .{ .left = right_ptr, .operator = .Less, .right = left_ptr }},
+                    };
+                },
+                .GreaterEqual => {
+                    const inner_ptr = try self.allocator.create(Node);
+                    inner_ptr.* = Node{
+                        .column = operator.column,
+                        .line = operator.line,
+                        .expr = .{.binary = .{ .left = left_ptr, .operator = .Less, .right = right_ptr }},
+                    };
 
+                    left_expr = Node{
+                        .column = operator.column,
+                        .line = operator.line,
+                        .expr = .{ .unary = .{ .operator = .Bang, .operand = inner_ptr } },
+                    };
+                },
+                .LessEqual => {
+                    const inner_ptr = try self.allocator.create(Node);
+                    inner_ptr.* = Node{
+                        .column = operator.column,
+                        .line = operator.line,
+                        .expr = .{.binary = .{ .left = right_ptr, .operator = .Less, .right = left_ptr }},
+                    };
+
+                    left_expr = Node{
+                        .column = operator.column,
+                        .line = operator.line,
+                        .expr = .{ .unary = .{ .operator = .Bang, .operand = inner_ptr } },
+                    };
+                },
+                .Less => {
+                    left_expr = Node{
+                        .column = operator.column,
+                        .line = operator.line,
+                        .expr = .{ .binary = .{ .left = left_ptr, .operator = .Less, .right = right_ptr } },
+                    };
+                },
+                else => unreachable,
+            }
+        }
         return left_expr;
     }
 

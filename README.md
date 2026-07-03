@@ -30,6 +30,13 @@ let time = 9.58s
 let speed = distance / time    // -> 10.44 m/s (derived unit)
 ```
 
+Internally all values stored in SI base units (m, s, kg, A, K). SI prefixes supported automatically (`5km` = 5000m). Conversion via `as` keyword:
+```
+unit mile = 1609.34m
+let marathon = 42.195km
+marathon as mile    // -> 26.2 miles
+```
+
 #### String Interpolation (f-strings)
 Use a prefix like Python's `f"..."` rather than making all strings interpolated.
 Keeps regular strings simple and fast — no scanning for `{}`.
