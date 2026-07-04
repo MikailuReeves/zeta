@@ -3,19 +3,8 @@ const std = @import("std");
 const Lexer = @import("lexer.zig").Lexer;
 const Diagnostic = @import("diagnostic.zig").Diagnostic;
 const Parser = @import("parser.zig").Parser;
+const Interpreter = @import("interpreter.zig").Interpreter;
 const Ast = @import("ast.zig");
-const Node = Ast.Node;
-const Value = Ast.Value;
-const eval = @import("eval.zig");
-
-fn printValue(val: Value) void {
-    switch (val) {
-        .Number => |n| std.debug.print("{d}", .{n}),
-        .Bool => |b| std.debug.print("{}", .{b}),
-        .String => |s| std.debug.print("\"{s}\"", .{s}),
-        .Null => std.debug.print("null", .{}),
-    }
-}
 
 pub fn main(init: std.process.Init) !void {
     const io = init.io;
@@ -32,6 +21,8 @@ pub fn main(init: std.process.Init) !void {
     );
 
     // --- Lexer ---
+    std.debug.print("=== Source ===\n{s}\n", .{source_buffer});
+
     var lexer = try Lexer.init(allocator, source_buffer);
     defer lexer.deinit();
 
@@ -45,6 +36,15 @@ pub fn main(init: std.process.Init) !void {
         return;
     }
 
+    std.debug.print("=== Tokens ===\n", .{});
+    for (tokens) |tok| {
+        if (tok.lexeme.len > 0) {
+            std.debug.print("  {s: <16} \"{s}\"\n", .{ @tagName(tok.kind), tok.lexeme });
+        } else {
+            std.debug.print("  {s}\n", .{@tagName(tok.kind)});
+        }
+    }
+
     // --- Parser ---
     var parser = Parser{
         .tokens = tokens,
@@ -52,25 +52,25 @@ pub fn main(init: std.process.Init) !void {
         .allocator = allocator,
     };
 
-    if (parser.parse()) |node| {
-        if (node.prettyPrint(allocator)) |pp| {
-            std.debug.print("AST: {s}\n", .{pp});
-        } else |_| {
-            std.debug.print("AST: <print error>\n", .{});
-        }
-
-        if (eval.evalExp(node)) |val| {
-            std.debug.print("Result: ", .{});
-            printValue(val);
-            std.debug.print("\n", .{});
-        } else |err| {
-            std.debug.print("Eval ERROR: {s}\n", .{@errorName(err)});
-        }
-    } else {
+    const declarations = parser.parse() catch |err| {
         std.debug.print("Parse error", .{});
         if (parser.last_error_message) |msg| {
             std.debug.print(": {s}", .{msg});
         }
         std.debug.print("\n", .{});
+        return err;
+    };
+
+    std.debug.print("\n=== AST ===\n", .{});
+    for (declarations) |decl| {
+        Ast.prettyPrintDecl(decl, allocator, 0) catch {};
     }
+
+    // --- Interpreter ---
+    std.debug.print("\n=== Output ===\n", .{});
+    var interpreter = Interpreter.init(allocator);
+    interpreter.interpret(declarations) catch |err| {
+        std.debug.print("Runtime error: {s}\n", .{@errorName(err)});
+        return err;
+    };
 }

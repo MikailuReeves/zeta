@@ -4,12 +4,14 @@ const Token = @import("lexer.zig").Token;
 const TokenType = @import("tokens.zig").TokenType;
 const Node = @import("ast.zig").Node;
 const Expr = @import("ast.zig").Expr;
+const Decl = @import("ast.zig").Decl;
 const Allocator = std.mem.Allocator;
 
 const ParseError = error{
     UnexpectedToken,
     OutOfMemory,
     InvalidCharacter,
+    ParserError,
 };
 
 pub const Parser = struct {
@@ -64,8 +66,88 @@ pub const Parser = struct {
 
     // Rules
     fn expression(self: *Parser) ParseError!Node {
-        return self.*.equality();
+        return self.assignment();
     }
+
+    fn assignment(self: *Parser) !Node {
+        const expr = try self.equality();
+
+        if (self.match(&.{.Equal})) {
+            const equals = self.previous();
+            const value_expr = try self.assignment();
+            const value_ptr = try self.allocator.create(Node);
+            value_ptr.* = value_expr;
+
+
+            switch (expr.expr) {
+                .identifier => |name| {
+                    return Node{
+                        .column = expr.column,
+                        .line = expr.line,
+                        .expr = .{ .assign = .{ .name = name, .value = value_ptr } }
+                    };
+                },
+                else => {
+                    self.last_error_message = "Invalid assignment target,";
+                    self.last_error_token = equals;
+                    return error.UnexpectedToken;
+                }
+            }
+        }
+        return expr;
+    }
+
+    fn declaration(self: *Parser) ParseError!Decl {
+        if (self.match(&.{.Var})) {
+            return self.varDeclaration();
+        }
+        return self.statement();
+    }
+
+    fn varDeclaration(self: *Parser) !Decl {
+        const name = try self.consume(.Identifier, "Expected a variable name");
+
+        var initializer : ?Node = null;
+        if (self.match(&.{.Equal})) {
+            initializer = try self.expression();
+        }
+        _ =try self.consume(.Semicolon, "Expect ';' after variable declaration.");
+        return Decl{.var_statement = .{
+            .name = name.lexeme,
+            .var_expression = initializer }};
+    }
+
+    fn statement(self: *Parser) !Decl {
+        if (self.match(&.{.Print})) {
+            return self.printStatement();
+        } else if (self.match(&.{.LBrace})) {
+            return Decl{.block = try self.block()};
+        }
+        return self.expressionStatement();
+    }
+
+    fn expressionStatement(self: *Parser) !Decl {
+        const expr = try self.expression();
+        _ =try self.consume(.Semicolon, "Expect ';' after expression.");
+        return Decl{.expr_statement = expr};
+    }
+
+    fn printStatement(self: *Parser) !Decl {
+        const value = try self.expression();
+        _ =try self.consume(.Semicolon, "Expect ';' after value.");
+        return Decl{.print_statement = value};
+    }
+
+    fn block(self: *Parser) ![]Decl {
+        var statements: std.ArrayList(Decl) = .empty;
+        while(!self.check(.RBrace) and !self.isAtEnd()) {
+            const decl = try self.declaration();
+            try statements.append(self.allocator, decl);
+        }
+        _ = try self.consume(.RBrace,  "Expect '}' after block.");
+        return statements.toOwnedSlice(self.allocator);
+    }
+
 
     fn equality(self: *Parser) !Node {
         var left_expr = try self.comparison();
@@ -286,15 +368,33 @@ pub const Parser = struct {
             return expr;
         }
 
+        if (self.match(&.{.Identifier})) {
+            const tok = self.previous();
+            return Node{
+                .column = tok.column,
+                .line = tok.line,
+                .expr = .{ .identifier = tok.lexeme }
+            };
+        }
+
         return error.UnexpectedToken;
     }
 
-    pub fn parse(self: *Parser) ?Node {
-        return self.expression() catch null;
+    pub fn parse(self: *Parser) ![]Decl {
+        var declarations: std.ArrayList(Decl) = .empty;
+        while(!self.isAtEnd()) {
+            const decl = try self.declaration();
+            try declarations.append(self.allocator, decl);
+        }
+        return declarations.toOwnedSlice(self.allocator);
     }
 };
 
 test "parser compiles" {
+    _ = &Parser.statement;
+    _ = &Parser.declaration;
+    _ = &Parser.expressionStatement;
+    _ = &Parser.varDeclaration;
     _ = &Parser.comparison;
     _ = &Parser.primary;
     _ = &Parser.unary;
@@ -304,4 +404,6 @@ test "parser compiles" {
     _ = &Parser.factor;
     _ = &Parser.term;
     _ = &Parser.equality;
+    _ = &Parser.assignment;
+    _ = &Parser.block;
 }

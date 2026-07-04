@@ -1,1 +1,6 @@
-!true != true
+var x = 10;
+{
+  vsdfar x = 20+12;
+  print x;
+}
+print x;
