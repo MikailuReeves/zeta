@@ -1,6 +1,9 @@
-print true or false;
-print false or true;
-print false and true;
-print true and false;
-print true and true;
-print false or false;
+var sum = 0;
+for (var i = 0; i < 5; i = i + 1) {
+  sum = sum + i;
+}
+print sum;
+
+for (var j = 0; j < 3; j = j + 1) {
+  print j;
+}

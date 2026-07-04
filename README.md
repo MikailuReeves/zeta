@@ -16,7 +16,7 @@ zig build test --summary all
 ### Current: Crafting Interpreters
 - [x] Chapter 7 — Evaluating expressions / statements
 - [x] Chapter 8 — Statements and state (variables)
-- [ ] Chapter 9 — Control flow
+- [x] Chapter 9 — Control flow
 - [ ] Chapter 10 — Functions
 
 ### Future: Signature Features

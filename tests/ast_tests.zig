@@ -245,3 +245,224 @@ test "deeper nesting: (1 + 2) * (4 - 1) = 9" {
     const result = try evalNode(node);
     try std.testing.expectEqual(Value{ .Number = 9.0 }, result);
 }
+
+// --- Logical operator tests ---
+
+test "true and true = true" {
+    const allocator = std.testing.allocator;
+    const l = try boolNode(allocator, true);
+    defer allocator.destroy(l);
+    const r = try boolNode(allocator, true);
+    defer allocator.destroy(r);
+
+    const node = Node{ .expr = .{ .logical = .{ .left = l, .operator = .And, .right = r } }, .line = 1, .column = 1 };
+    const result = try evalNode(node);
+    try std.testing.expectEqual(Value{ .Bool = true }, result);
+}
+
+test "true and false = false" {
+    const allocator = std.testing.allocator;
+    const l = try boolNode(allocator, true);
+    defer allocator.destroy(l);
+    const r = try boolNode(allocator, false);
+    defer allocator.destroy(r);
+
+    const node = Node{ .expr = .{ .logical = .{ .left = l, .operator = .And, .right = r } }, .line = 1, .column = 1 };
+    const result = try evalNode(node);
+    try std.testing.expectEqual(Value{ .Bool = false }, result);
+}
+
+test "false and true = false (short-circuit)" {
+    const allocator = std.testing.allocator;
+    const l = try boolNode(allocator, false);
+    defer allocator.destroy(l);
+    const r = try boolNode(allocator, true);
+    defer allocator.destroy(r);
+
+    const node = Node{ .expr = .{ .logical = .{ .left = l, .operator = .And, .right = r } }, .line = 1, .column = 1 };
+    const result = try evalNode(node);
+    try std.testing.expectEqual(Value{ .Bool = false }, result);
+}
+
+test "false and false = false" {
+    const allocator = std.testing.allocator;
+    const l = try boolNode(allocator, false);
+    defer allocator.destroy(l);
+    const r = try boolNode(allocator, false);
+    defer allocator.destroy(r);
+
+    const node = Node{ .expr = .{ .logical = .{ .left = l, .operator = .And, .right = r } }, .line = 1, .column = 1 };
+    const result = try evalNode(node);
+    try std.testing.expectEqual(Value{ .Bool = false }, result);
+}
+
+test "true or false = true (short-circuit)" {
+    const allocator = std.testing.allocator;
+    const l = try boolNode(allocator, true);
+    defer allocator.destroy(l);
+    const r = try boolNode(allocator, false);
+    defer allocator.destroy(r);
+
+    const node = Node{ .expr = .{ .logical = .{ .left = l, .operator = .Or, .right = r } }, .line = 1, .column = 1 };
+    const result = try evalNode(node);
+    try std.testing.expectEqual(Value{ .Bool = true }, result);
+}
+
+test "false or true = true" {
+    const allocator = std.testing.allocator;
+    const l = try boolNode(allocator, false);
+    defer allocator.destroy(l);
+    const r = try boolNode(allocator, true);
+    defer allocator.destroy(r);
+
+    const node = Node{ .expr = .{ .logical = .{ .left = l, .operator = .Or, .right = r } }, .line = 1, .column = 1 };
+    const result = try evalNode(node);
+    try std.testing.expectEqual(Value{ .Bool = true }, result);
+}
+
+test "false or false = false" {
+    const allocator = std.testing.allocator;
+    const l = try boolNode(allocator, false);
+    defer allocator.destroy(l);
+    const r = try boolNode(allocator, false);
+    defer allocator.destroy(r);
+
+    const node = Node{ .expr = .{ .logical = .{ .left = l, .operator = .Or, .right = r } }, .line = 1, .column = 1 };
+    const result = try evalNode(node);
+    try std.testing.expectEqual(Value{ .Bool = false }, result);
+}
+
+test "true or true = true" {
+    const allocator = std.testing.allocator;
+    const l = try boolNode(allocator, true);
+    defer allocator.destroy(l);
+    const r = try boolNode(allocator, true);
+    defer allocator.destroy(r);
+
+    const node = Node{ .expr = .{ .logical = .{ .left = l, .operator = .Or, .right = r } }, .line = 1, .column = 1 };
+    const result = try evalNode(node);
+    try std.testing.expectEqual(Value{ .Bool = true }, result);
+}
+
+// --- Comparison tests ---
+
+test "less than: 1 < 2 = true" {
+    const allocator = std.testing.allocator;
+    const one = try numNode(allocator, 1.0);
+    defer allocator.destroy(one);
+    const two = try numNode(allocator, 2.0);
+    defer allocator.destroy(two);
+
+    const node = Node{ .expr = .{ .binary = .{ .left = one, .operator = .Less, .right = two } }, .line = 1, .column = 1 };
+    const result = try evalNode(node);
+    try std.testing.expectEqual(Value{ .Bool = true }, result);
+}
+
+test "less than: 2 < 1 = false" {
+    const allocator = std.testing.allocator;
+    const two = try numNode(allocator, 2.0);
+    defer allocator.destroy(two);
+    const one = try numNode(allocator, 1.0);
+    defer allocator.destroy(one);
+
+    const node = Node{ .expr = .{ .binary = .{ .left = two, .operator = .Less, .right = one } }, .line = 1, .column = 1 };
+    const result = try evalNode(node);
+    try std.testing.expectEqual(Value{ .Bool = false }, result);
+}
+
+test "less than: 2 < 2 = false" {
+    const allocator = std.testing.allocator;
+    const a = try numNode(allocator, 2.0);
+    defer allocator.destroy(a);
+    const b = try numNode(allocator, 2.0);
+    defer allocator.destroy(b);
+
+    const node = Node{ .expr = .{ .binary = .{ .left = a, .operator = .Less, .right = b } }, .line = 1, .column = 1 };
+    const result = try evalNode(node);
+    try std.testing.expectEqual(Value{ .Bool = false }, result);
+}
+
+// --- Equality tests ---
+
+test "equality: 5 == 5 = true" {
+    const allocator = std.testing.allocator;
+    const a = try numNode(allocator, 5.0);
+    defer allocator.destroy(a);
+    const b = try numNode(allocator, 5.0);
+    defer allocator.destroy(b);
+
+    const node = Node{ .expr = .{ .binary = .{ .left = a, .operator = .EqualEqual, .right = b } }, .line = 1, .column = 1 };
+    const result = try evalNode(node);
+    try std.testing.expectEqual(Value{ .Bool = true }, result);
+}
+
+test "equality: 5 == 3 = false" {
+    const allocator = std.testing.allocator;
+    const a = try numNode(allocator, 5.0);
+    defer allocator.destroy(a);
+    const b = try numNode(allocator, 3.0);
+    defer allocator.destroy(b);
+
+    const node = Node{ .expr = .{ .binary = .{ .left = a, .operator = .EqualEqual, .right = b } }, .line = 1, .column = 1 };
+    const result = try evalNode(node);
+    try std.testing.expectEqual(Value{ .Bool = false }, result);
+}
+
+test "equality: true == true = true" {
+    const allocator = std.testing.allocator;
+    const a = try boolNode(allocator, true);
+    defer allocator.destroy(a);
+    const b = try boolNode(allocator, true);
+    defer allocator.destroy(b);
+
+    const node = Node{ .expr = .{ .binary = .{ .left = a, .operator = .EqualEqual, .right = b } }, .line = 1, .column = 1 };
+    const result = try evalNode(node);
+    try std.testing.expectEqual(Value{ .Bool = true }, result);
+}
+
+test "equality: true == false = false" {
+    const allocator = std.testing.allocator;
+    const a = try boolNode(allocator, true);
+    defer allocator.destroy(a);
+    const b = try boolNode(allocator, false);
+    defer allocator.destroy(b);
+
+    const node = Node{ .expr = .{ .binary = .{ .left = a, .operator = .EqualEqual, .right = b } }, .line = 1, .column = 1 };
+    const result = try evalNode(node);
+    try std.testing.expectEqual(Value{ .Bool = false }, result);
+}
+
+test "equality: mismatched types is a type error" {
+    const allocator = std.testing.allocator;
+    const a = try numNode(allocator, 1.0);
+    defer allocator.destroy(a);
+    const b = try boolNode(allocator, true);
+    defer allocator.destroy(b);
+
+    const node = Node{ .expr = .{ .binary = .{ .left = a, .operator = .EqualEqual, .right = b } }, .line = 1, .column = 1 };
+    try std.testing.expectError(error.TypeError, evalNode(node));
+}
+
+// --- Logical operator type error tests ---
+
+test "logical and with number is a type error" {
+    const allocator = std.testing.allocator;
+    const n = try numNode(allocator, 1.0);
+    defer allocator.destroy(n);
+    const b = try boolNode(allocator, true);
+    defer allocator.destroy(b);
+
+    const node = Node{ .expr = .{ .logical = .{ .left = n, .operator = .And, .right = b } }, .line = 1, .column = 1 };
+    try std.testing.expectError(error.TypeError, evalNode(node));
+}
+
+test "logical or with number is a type error" {
+    const allocator = std.testing.allocator;
+    const n = try numNode(allocator, 1.0);
+    defer allocator.destroy(n);
+    const b = try boolNode(allocator, true);
+    defer allocator.destroy(b);
+
+    const node = Node{ .expr = .{ .logical = .{ .left = n, .operator = .Or, .right = b } }, .line = 1, .column = 1 };
+    try std.testing.expectError(error.TypeError, evalNode(node));
+}

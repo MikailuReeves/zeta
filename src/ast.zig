@@ -23,6 +23,7 @@ pub const Decl = union(enum) {
     print_statement: Node,
     var_statement: VarStatement,
     if_statement: IfStatement,
+    while_statement: WhileStatement,
     block: []Decl,
 };
 
@@ -35,6 +36,11 @@ const IfStatement = struct {
     condition: Node,
     else_branch: ?*Decl,
     then_branch: *Decl,
+};
+
+const WhileStatement = struct {
+    condition: Node,
+    body: *Decl,
 };
 
 pub fn prettyPrintDecl(decl: Decl, allocator: std.mem.Allocator, depth: usize) !void {
@@ -66,6 +72,13 @@ pub fn prettyPrintDecl(decl: Decl, allocator: std.mem.Allocator, depth: usize) !
                 try prettyPrintDecl(branch.*, allocator, depth + 1);
             }
         },
+
+        .while_statement => |stmt| {
+            const expr_str = try stmt.condition.prettyPrint(allocator);
+            std.debug.print("{s}WhileStmt: {s}\n", .{ indent, expr_str });
+            try prettyPrintDecl(stmt.body.*, allocator, depth + 1);
+        },
+
         .block => |decls| {
             std.debug.print("{s}Block:\n", .{indent});
             for (decls) |d| {

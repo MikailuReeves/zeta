@@ -80,6 +80,13 @@ pub const Interpreter = struct {
                     try self.executeDecl(branch.*);
                 }
             },
+
+            .while_statement => |stmt| {
+                while (try expectBool(try self.evalExp(stmt.condition))) {
+                    try self.executeDecl(stmt.body.*);
+                }
+            },
+
             .block => |decs| {
                 try self.executeBlock(decs);
             }

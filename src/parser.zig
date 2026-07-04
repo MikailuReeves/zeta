@@ -157,15 +157,89 @@ pub const Parser = struct {
             .var_expression = initializer }};
     }
 
+    fn whileStatement(self: *Parser) ParseError!Decl {
+        _ = try self.consume(.LParen, "Expected '(' after while.");
+        const condition = try self.expression();
+        _ = try self.consume(.RParen, "Expected ')' after while condition");
+
+        const body = try self.allocator.create(Decl);
+        body.* = try self.statement();
+
+        return Decl {.while_statement = .{
+            .condition = condition,
+            .body = body,
+        }};
+    }
+
     fn statement(self: *Parser) !Decl {
         if (self.match(&.{.If})) {
             return try self.ifStatement();
         } else if (self.match(&.{.LBrace})) {
             return Decl{.block = try self.block()};
         } else if (self.match(&.{.Print})) {
-            return self.printStatement();
+            return try self.printStatement();
+        } else if (self.match(&.{.While})) {
+            return try self.whileStatement();
+        } else if (self.match(&.{.For})) {
+            return try self.forStatement();
         }
         return self.expressionStatement();
+    }
+
+    fn forStatement(self: *Parser) ParseError!Decl {
+        _ = try self.consume(.LParen, "Expected '(' after 'for'.");
+
+        var initializer: ?Decl = null;
+
+        if (self.match(&.{.Semicolon})) {
+            // no initializer, already null
+        } else if (self.match(&.{.Var})) {
+            initializer = try self.varDeclaration();
+        } else {
+            initializer = try self.expressionStatement();
+        }
+
+        var condition: ?Node = null;
+        if (!(self.check(.Semicolon))) {
+            condition = try self.expression();
+        }
+        _ = try self.consume(.Semicolon, "Expect ';' after loop condition.");
+
+        var increment: ?Node = null;
+        if (!(self.check(.RParen))) {
+            increment = try self.expression();
+        }
+        _ = try self.consume(.RParen, "Expected ')' after for clauses");
+
+        var body = try self.statement();
+
+        if (increment) |inc| {
+            const stmts = try self.allocator.alloc(Decl, 2);
+            stmts[0] = body;
+            stmts[1] = Decl{.expr_statement = inc};
+            body = Decl{ .block = stmts };
+        }
+
+        if (condition == null) {
+            condition = Node{
+                .column = 0,
+                .line = 0,
+                .expr = .{ .literal = .{ .Bool = true } }
+            };
+        }
+
+        const body_ptr = try self.allocator.create(Decl);
+        body_ptr.* = body;
+        body = Decl{ .while_statement = .{ .body = body_ptr, .condition = condition.? } };
+
+        if (initializer) |init| {
+            const stmts = try self.allocator.alloc(Decl, 2);
+            stmts[0] = init;
+            stmts[1] = body;
+            body = Decl{ .block = stmts };
+        }
+
+        return body;
     }
 
     fn expressionStatement(self: *Parser) !Decl {
