@@ -1,6 +1,6 @@
-var x = 10;
-{
-  vsdfar x = 20+12;
-  print x;
-}
-print x;
+print true or false;
+print false or true;
+print false and true;
+print true and false;
+print true and true;
+print false or false;

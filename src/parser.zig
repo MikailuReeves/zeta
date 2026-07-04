@@ -70,7 +70,7 @@ pub const Parser = struct {
     }
 
     fn assignment(self: *Parser) !Node {
-        const expr = try self.equality();
+        const expr = try self.or_();
 
         if (self.match(&.{.Equal})) {
             const equals = self.previous();
@@ -97,6 +97,46 @@ pub const Parser = struct {
         return expr;
     }
 
+    fn or_(self: *Parser) !Node {
+        var left_expr = try self.and_();
+
+        while (self.match(&.{ .Or })) {
+            const operator = self.previous();
+            const left_ptr = try self.allocator.create(Node);
+            left_ptr.* = left_expr;
+
+            const right_ptr = try self.allocator.create(Node);
+            right_ptr.* = try self.and_();
+
+            left_expr = Node{
+                .column = operator.column,
+                .line = operator.line,
+                .expr = .{ .logical = .{ .left = left_ptr, .operator = operator.kind,.right = right_ptr } }
+            };
+        }
+        return left_expr;
+    }
+
+    fn and_(self: *Parser) !Node {
+        var left_expr = try self.equality();
+
+        while (self.match(&.{ .And })) {
+            const operator = self.previous();
+            const left_ptr = try self.allocator.create(Node);
+            left_ptr.* = left_expr;
+
+            const right_ptr = try self.allocator.create(Node);
+            right_ptr.* = try self.equality();
+
+            left_expr = Node{
+                .column = operator.column,
+                .line = operator.line,
+                .expr = .{ .logical = .{ .left = left_ptr, .operator = operator.kind,.right = right_ptr } }
+            };
+        }
+        return left_expr;
+    }
+
     fn declaration(self: *Parser) ParseError!Decl {
         if (self.match(&.{.Var})) {
             return self.varDeclaration();
@@ -118,10 +158,12 @@ pub const Parser = struct {
     }
 
     fn statement(self: *Parser) !Decl {
-        if (self.match(&.{.Print})) {
-            return self.printStatement();
+        if (self.match(&.{.If})) {
+            return try self.ifStatement();
         } else if (self.match(&.{.LBrace})) {
             return Decl{.block = try self.block()};
+        } else if (self.match(&.{.Print})) {
+            return self.printStatement();
         }
         return self.expressionStatement();
     }
@@ -136,6 +178,27 @@ pub const Parser = struct {
         const value = try self.expression();
         _ =try self.consume(.Semicolon, "Expect ';' after value.");
         return Decl{.print_statement = value};
+    }
+
+    fn ifStatement(self: *Parser) ParseError!Decl {
+        _ = try self.consume(.LParen, "Expect '(' after 'if'.");
+        const condition = try self.expression();
+        _ = try self.consume(.RParen, "Expect ')' after if condition.");
+
+        const then_branch = try self.allocator.create(Decl);
+        then_branch.* = try self.statement();
+
+        var else_branch: ?*Decl = null;
+
+        if (self.match(&.{.Else})) {
+            else_branch = try self.allocator.create(Decl);
+            else_branch.?.* = try self.statement();
+        }
+
+        return Decl {.if_statement = .{
+            .condition = condition,
+            .else_branch = else_branch,
+            .then_branch = then_branch }};
     }
 
     fn block(self: *Parser) ![]Decl {
@@ -406,4 +469,6 @@ test "parser compiles" {
     _ = &Parser.equality;
     _ = &Parser.assignment;
     _ = &Parser.block;
+    _ = &Parser.or_;
+    _ = &Parser.and_;
 }

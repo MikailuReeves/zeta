@@ -15,18 +15,26 @@ pub const Expr = union(enum) {
     binary: struct { left: *const Node, operator: TokenType, right: *const Node },
     identifier: []const u8,
     assign: struct { name: []const u8, value: *const Node },
+    logical: struct { left: *const Node, operator: TokenType, right: *const Node },
 };
 
 pub const Decl = union(enum) {
     expr_statement: Node,
     print_statement: Node,
     var_statement: VarStatement,
+    if_statement: IfStatement,
     block: []Decl,
 };
 
 const VarStatement = struct {
     name: []const u8,
     var_expression: ?Node,
+};
+
+const IfStatement = struct {
+    condition: Node,
+    else_branch: ?*Decl,
+    then_branch: *Decl,
 };
 
 pub fn prettyPrintDecl(decl: Decl, allocator: std.mem.Allocator, depth: usize) !void {
@@ -48,6 +56,14 @@ pub fn prettyPrintDecl(decl: Decl, allocator: std.mem.Allocator, depth: usize) !
                 std.debug.print("{s}VarDecl: {s} = {s}\n", .{ indent, v.name, expr_str });
             } else {
                 std.debug.print("{s}VarDecl: {s}\n", .{ indent, v.name });
+            }
+        },
+        .if_statement => |stmt| {
+            const expr_str = try stmt.condition.prettyPrint(allocator);
+            std.debug.print("{s}IfStmt: {s}\n", .{ indent, expr_str });
+            try prettyPrintDecl(stmt.then_branch.*, allocator, depth + 1);
+            if (stmt.else_branch) |branch| {
+                try prettyPrintDecl(branch.*, allocator, depth + 1);
             }
         },
         .block => |decls| {
@@ -73,6 +89,8 @@ fn opStr(op: TokenType) []const u8 {
         .LessEqual => "<=",
         .EqualEqual => "==",
         .NotEqual => "!=",
+        .And => "and",
+        .Or => "or",
         else => "?",
     };
 }
@@ -107,6 +125,11 @@ pub const Node = struct {
             .assign => |a| {
                 const val_str = try a.value.prettyPrint(allocator);
                 return std.fmt.allocPrint(allocator, "(= {s} {s})", .{ a.name, val_str });
+            },
+            .logical => |l| {
+                const left_str = try l.left.prettyPrint(allocator);
+                const right_str = try l.right.prettyPrint(allocator);
+                return std.fmt.allocPrint(allocator, "({s} {s} {s})", .{ opStr(l.operator), left_str, right_str });
             },
         }
     }

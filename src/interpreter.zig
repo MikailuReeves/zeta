@@ -52,32 +52,43 @@ pub const Interpreter = struct {
         self.environment = previous.*;
     }
 
+    pub fn executeDecl(self: *Interpreter, decl: Decl) !void {
+        switch (decl) {
+            .expr_statement => |node| {
+                _ = try self.evalExp(node);
+            },
+            .print_statement => |node| {
+                const val = try self.evalExp(node);
+                switch (val) {
+                    .Number => |n| std.debug.print("{d}\n", .{n}),
+                    .Bool => |b| std.debug.print("{}\n", .{b}),
+                    .String => |s| std.debug.print("{s}\n", .{s}),
+                    .Null => std.debug.print("null\n", .{}),
+                }
+            },
+            .var_statement => |v| {
+                var value: Value = .Null;
+                if (v.var_expression) |expr| {
+                    value = try self.evalExp(expr);
+                }
+                try self.environment.define(v.name, value);
+            },
+            .if_statement => |stmt| {
+                if(try expectBool(try self.evalExp(stmt.condition))) {
+                    try self.executeDecl(stmt.then_branch.*);
+                } else if (stmt.else_branch) |branch| {
+                    try self.executeDecl(branch.*);
+                }
+            },
+            .block => |decs| {
+                try self.executeBlock(decs);
+            }
+        }
+    }
+
     pub fn interpret(self: *Interpreter, decls: []Decl) EvalError!void {
         for (decls) |decl| {
-            switch (decl) {
-                .expr_statement => |node| {
-                    _ = try self.evalExp(node);
-                },
-                .print_statement => |node| {
-                    const val = try self.evalExp(node);
-                    switch (val) {
-                        .Number => |n| std.debug.print("{d}\n", .{n}),
-                        .Bool => |b| std.debug.print("{}\n", .{b}),
-                        .String => |s| std.debug.print("{s}\n", .{s}),
-                        .Null => std.debug.print("null\n", .{}),
-                    }
-                },
-                .var_statement => |v| {
-                    var value: Value = .Null;
-                    if (v.var_expression) |expr| {
-                        value = try self.evalExp(expr);
-                    }
-                    try self.environment.define(v.name, value);
-                },
-                .block => |decs| {
-                    try self.executeBlock(decs);
-                }
-            }
+            try self.executeDecl(decl);
         }
     }
 
@@ -94,6 +105,14 @@ pub const Interpreter = struct {
                 const value = try self.evalExp(a.value.*);
                 try self.environment.assign(a.name, value);
                 return value;
+            },
+
+            .logical => |l| {
+                const left_val = try self.evalExp(l.left.*);
+                const left_bool = try expectBool(left_val);
+                const short_circuit = if (l.operator == .Or) left_bool else !left_bool;
+                if (short_circuit) return left_val;
+                return try self.evalExp(l.right.*);
             },
 
             .unary => |u| {
